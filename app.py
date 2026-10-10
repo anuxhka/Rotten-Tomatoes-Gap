@@ -10,8 +10,8 @@ Usage:
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 from io import BytesIO
+from pathlib import Path
 
 from src.data_loader import (
     load_merged_data,
@@ -34,8 +34,48 @@ st.set_page_config(
     page_title="The Rotten Tomatoes Gap",
     page_icon="🍅",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
+
+st.markdown(
+    f"<style>{(Path(__file__).parent / 'assets' / 'styles.css').read_text(encoding='utf-8')}</style>",
+    unsafe_allow_html=True,
+)
+
+HELP = {
+    "search": "Search movie titles, ignoring capitalization. Punctuation is treated literally. This filters the overview, movie picker, and export.",
+    "genres": "Show films tagged with any selected genre. Leave blank to include all genres.",
+    "years": "Include films released within these years, including both endpoints. Unknown years appear only when the full range is selected.",
+    "critic_count": "Minimum number of critics who rated a film in the movies dataset. Set to 0 for no minimum. This is different from the number of review texts analyzed below.",
+    "audience_count": "Minimum number of audience ratings recorded for a film. Set to 0 for no minimum.",
+    "critic_total": "Number of critics counted for this film's published critic rating. This can differ from the review texts available for sentiment analysis.",
+    "audience_total": "Number of audience ratings counted for this film's published audience score.",
+    "both": "Keep only films with both critic and audience percentage scores. Both are needed to calculate a rating gap.",
+    "shortlist": "Save up to five films in this browser session. Remove films or clear the list in the Compare tab.",
+    "snapshot": "A historical dataset scraped in October 2020. Scores and review counts are not live.",
+    "films": "Number of films matching all current sidebar filters. Some may be missing one or both scores.",
+    "rated": "Films in the current view that have both critic and audience percentage scores.",
+    "average_gap": "Average absolute difference between critic and audience scores, in percentage points. Direction is ignored.",
+    "largest_gap": "Biggest absolute critic–audience score difference in the current view. The film is shown underneath.",
+    "map": "Each point is a film: audience score is horizontal, critic score vertical. On the diagonal, scores match; above it, critics score higher.",
+    "quadrants": "Show 60% reference lines and labels for the four broad rating regions. These are visual guides, not certification labels.",
+    "ranking": "Rank films by absolute gap, by critics scoring higher, or by audiences scoring higher. Only films with both scores appear.",
+    "top_n": "Maximum number of films shown in the leaderboard. Fewer appear when the filters leave fewer matches.",
+    "distribution": "Shows the signed gap: critic score minus audience score. Positive values mean critics score higher; negative values mean audiences score higher.",
+    "movie_picker": "Choose from films matching the sidebar filters. Type a title to narrow the list.",
+    "critic_score": "Percentage of critics whose reviews were classified as positive in the source dataset (Tomatometer).",
+    "audience_score": "Percentage of audience ratings classified as positive in the source dataset.",
+    "rating_gap": "Critic score minus audience score, in percentage points. Positive means critics scored higher.",
+    "sentiment": "VADER analyzes critic review text only, not audience reviews. Its tone score may differ from the critic rating.",
+    "compound": "Mean VADER compound score across available critic review texts, from −1 (negative) to +1 (positive).",
+    "reviews_analyzed": "Number of individual critic review texts available and scored by VADER. It may differ from the published critic count.",
+    "sentiment_share": "Share of analyzed critic review texts in this sentiment class. VADER uses ±0.05 as its positive and negative thresholds.",
+    "review_filter": "Choose which VADER sentiment labels to show. Clear all to show no reviews.",
+    "publication": "Limit the review table to selected publications. Leave blank to include every publication.",
+    "review_type": "Choose Fresh and/or Rotten labels from the source review data. Clear all to show no reviews.",
+    "comparison": "Compares the published critic and audience scores for films in your shortlist.",
+    "quality": "Counts how many movie records have each field available in this historical snapshot.",
+}
 
 # ─── Session state initialization ──────────────────────────────
 if "comparison_list" not in st.session_state:
@@ -56,25 +96,29 @@ movies_df, reviews_df = get_data()
 
 # ─── Sidebar ───────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🍅 The Rotten Tomatoes Gap")
-    st.caption("Quantifying the Critic vs. Audience Disconnect")
+    st.markdown(
+        '<div class="sidebar-brand"><span class="brand-mark">●</span>'
+        '<div><strong>THE GAP</strong><small>ROTTEN TOMATOES / 2020</small></div></div>',
+        unsafe_allow_html=True,
+    )
 
     st.divider()
 
     # --- Movie Search ---
-    st.subheader("🔍 Movie Search")
+    st.subheader("Find a film", help=HELP["search"])
     search_query = st.text_input(
         "Search movie titles",
         placeholder="e.g., The Dark Knight",
         key="search_input",
+        help=HELP["search"],
     )
 
     # --- Filters ---
-    st.subheader("🎛️ Filters")
+    st.subheader("Refine results", help="These filters apply across the overview, movie picker, and full export.")
 
     # Genre filter
     all_genres = get_all_genres(movies_df)
-    selected_genres = st.multiselect("Genres", options=all_genres, default=[])
+    selected_genres = st.multiselect("Genres", options=all_genres, default=[], help=HELP["genres"])
 
     # Year range
     min_year, max_year = get_year_range(movies_df)
@@ -83,41 +127,26 @@ with st.sidebar:
         min_value=min_year,
         max_value=max_year,
         value=(min_year, max_year),
+        help=HELP["years"],
     )
 
     # Minimum counts
     min_critic_count = st.number_input(
-        "Min. Critic Count", min_value=0, value=0, step=5
+        "Min. Critic Count", min_value=0, value=0, step=5,
+        help=HELP["critic_count"],
     )
     min_audience_count = st.number_input(
-        "Min. Audience Count", min_value=0, value=0, step=100
+        "Min. Audience Count", min_value=0, value=0, step=100,
+        help=HELP["audience_count"],
     )
 
     # Require both ratings toggle
-    require_both = st.checkbox("Only movies with both ratings", value=False)
-
-    st.divider()
-
-    # --- Comparison List ---
-    st.subheader("⚖️ Comparison List")
-    if st.session_state.comparison_list:
-        comp_movies = movies_df[movies_df["movie_id"].isin(st.session_state.comparison_list)]
-        for _, row in comp_movies.iterrows():
-            col1, col2 = st.columns([4, 1])
-            col1.write(f"📽️ {row['display_label']}")
-            if col2.button("✕", key=f"remove_{row['movie_id']}"):
-                st.session_state.comparison_list.remove(row["movie_id"])
-                st.rerun()
-        if st.button("Clear All", use_container_width=True):
-            st.session_state.comparison_list = []
-            st.rerun()
-    else:
-        st.caption("No movies added yet. Use the Movie Detail tab to add.")
+    require_both = st.checkbox("Only movies with both ratings", value=False, help=HELP["both"])
 
     st.divider()
 
     # --- Dataset Info (compact) ---
-    st.subheader("ℹ️ Dataset")
+    st.subheader("About the data", help=HELP["snapshot"])
     st.caption(f"**{len(movies_df):,}** movies · **{len(reviews_df):,}** critic reviews")
     st.caption("Source: Stefano Leone / Kaggle (CC0)")
     st.caption("Scraped: 2020-10-31 · Historical snapshot")
@@ -130,7 +159,7 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
 
     # Search
     if search_query:
-        mask = filtered["title"].str.contains(search_query, case=False, na=False)
+        mask = filtered["title"].str.contains(search_query, case=False, na=False, regex=False)
         filtered = filtered[mask]
 
     # Genre
@@ -145,7 +174,9 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     year_mask = (
         (filtered["release_year"] >= year_range[0])
         & (filtered["release_year"] <= year_range[1])
-    ) | filtered["release_year"].isna()
+    )
+    if year_range == (min_year, max_year):
+        year_mask |= filtered["release_year"].isna()
     filtered = filtered[year_mask]
 
     # Minimum counts
@@ -190,6 +221,11 @@ def format_count(val) -> str:
     return f"{val:,.0f}"
 
 
+def safe_number(val) -> float:
+    """Return zero for absent numeric values in sentiment summaries."""
+    return 0.0 if pd.isna(val) else float(val)
+
+
 def gap_color(val) -> str:
     """Return a color indicator for gap direction."""
     if pd.isna(val):
@@ -206,8 +242,17 @@ def gap_color(val) -> str:
 
 
 # ─── Main content area ────────────────────────────────────────
+st.markdown(
+    '<div class="hero">'
+    '<div class="hero-kicker"><span class="kicker-dot"></span> FILM OPINION, MAPPED</div>'
+    '<h1>Where critics and audiences <em>part ways.</em></h1>'
+    '<p>Explore the films that split opinion, then look closer at the reviews behind the scores.</p>'
+    f'<div class="hero-foot">{len(movies_df):,} FILMS <span>•</span> CRITIC &amp; AUDIENCE RATINGS <span>•</span> OCT 2020 SNAPSHOT</div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
 tab_overview, tab_detail, tab_compare, tab_info = st.tabs([
-    "📊 Overview", "🎬 Movie Detail", "⚖️ Compare", "ℹ️ Dataset Info"
+    "Overview", "Movie Detail", "Compare", "About the Data"
 ])
 
 
@@ -215,116 +260,121 @@ tab_overview, tab_detail, tab_compare, tab_info = st.tabs([
 # TAB 1: OVERVIEW
 # ═══════════════════════════════════════════════════════════════
 with tab_overview:
+    st.subheader("The big picture", help="All four figures update with the sidebar filters. A rating gap needs both scores.")
+    st.caption("Your sidebar search and filters apply to every chart and number in this view.")
     # Summary cards
     both_rated = filtered_df[filtered_df["has_both_ratings"]]
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Movies Matching", f"{len(filtered_df):,}")
-    col2.metric("With Both Ratings", f"{len(both_rated):,}")
+    col1.metric("Films in view", f"{len(filtered_df):,}", help=HELP["films"])
+    col2.metric("Both scores available", f"{len(both_rated):,}", help=HELP["rated"])
 
     if len(both_rated) > 0:
         mean_abs_gap = both_rated["abs_gap"].mean()
-        col3.metric("Mean |Gap|", f"{mean_abs_gap:.1f} pp")
+        col3.metric("Average disagreement", f"{mean_abs_gap:.1f} pp", help=HELP["average_gap"])
 
         max_gap_row = both_rated.loc[both_rated["abs_gap"].idxmax()]
         col4.metric(
-            "Largest Gap",
+            "Largest disagreement",
             f"{max_gap_row['abs_gap']:.0f} pp",
             delta=max_gap_row["display_label"],
             delta_color="off",
+            help=HELP["largest_gap"],
         )
     else:
-        col3.metric("Mean |Gap|", "N/A")
-        col4.metric("Largest Gap", "N/A")
+        col3.metric("Average disagreement", "N/A", help=HELP["average_gap"])
+        col4.metric("Largest disagreement", "N/A", help=HELP["largest_gap"])
 
-    st.divider()
+    if both_rated.empty:
+        st.info("No films with both ratings match these filters. Broaden your search to see the charts.")
+    else:
+        st.subheader("The opinion map", help=HELP["map"])
+        st.caption("Each dot is a film. Distance from the diagonal shows the size of the rating gap.")
 
-    # Main scatter plot
-    col_scatter, col_controls = st.columns([4, 1])
-    with col_controls:
-        show_quadrants = st.checkbox("Show quadrant labels", value=True)
-        st.caption(
-            "Each point = one movie.\n\n"
-            "**Above** diagonal → Critics rate higher.\n\n"
-            "**Below** diagonal → Audiences rate higher."
-        )
+        col_scatter, col_controls = st.columns([5, 1])
+        with col_controls:
+            show_quadrants = st.checkbox("Show quadrant labels", value=True, help=HELP["quadrants"])
+            st.caption("Above the diagonal: critics higher. Below: audiences higher.")
 
-    with col_scatter:
-        fig_scatter = create_scatter_plot(
-            filtered_df,
-            show_quadrants=show_quadrants,
-            selected_movies=st.session_state.comparison_list,
-        )
-        st.plotly_chart(fig_scatter, use_container_width=True, key="main_scatter")
-
-    st.divider()
-
-    # Gap ranking and distribution side by side
-    col_rank, col_dist = st.columns(2)
-
-    with col_rank:
-        rank_mode = st.selectbox(
-            "Ranking mode",
-            options=["largest", "critics_higher", "audiences_higher"],
-            format_func=lambda x: {
-                "largest": "Largest Disagreement",
-                "critics_higher": "Critics Rate Higher",
-                "audiences_higher": "Audiences Rate Higher",
-            }[x],
-        )
-        top_n = st.slider("Number of movies", 10, 50, 20, key="rank_topn")
-        fig_rank = create_gap_ranking(filtered_df, mode=rank_mode, top_n=top_n)
-        st.plotly_chart(fig_rank, use_container_width=True)
-
-    with col_dist:
-        fig_dist = create_gap_distribution(filtered_df)
-        st.plotly_chart(fig_dist, use_container_width=True)
-
-        # Quick stats
-        if len(both_rated) > 0:
-            critics_higher_pct = (both_rated["rating_gap"] > 0).mean() * 100
-            audiences_higher_pct = (both_rated["rating_gap"] < 0).mean() * 100
-            agree_pct = (both_rated["rating_gap"] == 0).mean() * 100
-
-            st.caption(
-                f"🔴 Critics higher: **{critics_higher_pct:.1f}%** of movies · "
-                f"🔵 Audiences higher: **{audiences_higher_pct:.1f}%** · "
-                f"⚪ Equal: **{agree_pct:.1f}%**"
+        with col_scatter:
+            fig_scatter = create_scatter_plot(
+                filtered_df,
+                show_quadrants=show_quadrants,
+                selected_movies=st.session_state.comparison_list,
             )
+            st.plotly_chart(fig_scatter, width="stretch", key="main_scatter")
+
+        st.divider()
+        st.subheader("The disagreement leaderboard", help=HELP["ranking"])
+        control_mode, control_count = st.columns([2, 1])
+        with control_mode:
+            rank_mode = st.selectbox(
+                "Ranking mode",
+                options=["largest", "critics_higher", "audiences_higher"],
+                format_func=lambda x: {
+                    "largest": "Largest Disagreement",
+                    "critics_higher": "Critics Rate Higher",
+                    "audiences_higher": "Audiences Rate Higher",
+                }[x],
+                help=HELP["ranking"],
+            )
+        with control_count:
+            top_n = st.slider("Number of films", 10, 30, 15, key="rank_topn", help=HELP["top_n"])
+        fig_rank = create_gap_ranking(filtered_df, mode=rank_mode, top_n=top_n)
+        st.plotly_chart(fig_rank, width="stretch")
+
+        st.subheader("How gaps are distributed", help=HELP["distribution"])
+        fig_dist = create_gap_distribution(filtered_df)
+        st.plotly_chart(fig_dist, width="stretch")
+
+        critics_higher_pct = (both_rated["rating_gap"] > 0).mean() * 100
+        audiences_higher_pct = (both_rated["rating_gap"] < 0).mean() * 100
+        agree_pct = (both_rated["rating_gap"] == 0).mean() * 100
+
+        st.caption(
+            f"Mean gap: **{both_rated['rating_gap'].mean():+.1f} pp** · "
+            f"Critics higher: **{critics_higher_pct:.1f}%** of films · "
+            f"Audiences higher: **{audiences_higher_pct:.1f}%** · "
+            f"Equal: **{agree_pct:.1f}%**"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════
 # TAB 2: MOVIE DETAIL
 # ═══════════════════════════════════════════════════════════════
 with tab_detail:
-    # Movie selector
-    st.subheader("Select a Movie")
-
-    if search_query:
-        search_results = filtered_df
-    else:
-        search_results = movies_df
+    st.subheader("Go beyond the scores", help="Inspect published ratings and available critic review text for one film.")
+    st.caption("Choose a film from your current filters to inspect its ratings and critic reviews.")
+    search_results = filtered_df
 
     if len(search_results) == 0:
-        st.warning("This movie is not included in the loaded dataset.")
+        st.info("No films match your current filters. Broaden them in the sidebar.")
     else:
-        movie_options = search_results.sort_values("display_label")["display_label"].tolist()
-        selected_label = st.selectbox(
+        sorted_movies = search_results.sort_values(["display_label", "movie_id"])
+        movie_options = sorted_movies["movie_id"].tolist()
+        movie_labels = dict(zip(sorted_movies["movie_id"], sorted_movies["display_label"]))
+        selected_id = st.selectbox(
             "Choose a movie",
             options=movie_options,
-            index=0 if movie_options else None,
+            index=None,
+            placeholder="Search or choose a film…",
+            format_func=lambda movie_id: movie_labels[movie_id],
             key="movie_selector",
+            help=HELP["movie_picker"],
         )
 
-        if selected_label:
-            movie_row = search_results[search_results["display_label"] == selected_label].iloc[0]
-            movie_id = movie_row["movie_id"]
+        if selected_id:
+            movie_row = search_results[search_results["movie_id"] == selected_id].iloc[0]
+            movie_id = selected_id
 
             # Add to comparison button
             if movie_id not in st.session_state.comparison_list:
-                if st.button(f"➕ Add to comparison", key="add_compare"):
+                if st.button("Add to comparison", key="add_compare", disabled=len(st.session_state.comparison_list) >= 5,
+                             help=HELP["shortlist"]):
                     st.session_state.comparison_list.append(movie_id)
                     st.rerun()
+                if len(st.session_state.comparison_list) >= 5:
+                    st.caption("Comparison is full. Remove a film in the Compare tab to add this one.")
             else:
                 st.success("✓ In comparison list")
 
@@ -355,27 +405,27 @@ with tab_detail:
                         st.write(movie_row["synopsis"])
 
             with col_ratings:
-                st.subheader("Ratings")
+                st.subheader("Ratings", help="The source dataset's published percentage scores and rating counts for this film.")
 
                 r_col1, r_col2 = st.columns(2)
-                r_col1.metric("🍅 Critic", format_rating(movie_row.get("critic_rating")))
-                r_col2.metric("🍿 Audience", format_rating(movie_row.get("audience_rating")))
+                r_col1.metric("🍅 Critic", format_rating(movie_row.get("critic_rating")), help=HELP["critic_score"])
+                r_col2.metric("🍿 Audience", format_rating(movie_row.get("audience_rating")), help=HELP["audience_score"])
 
                 gap_val = movie_row.get("rating_gap")
                 st.metric(
                     f"{gap_color(gap_val)} Rating Gap",
                     format_gap(gap_val),
-                    help="Critic Rating − Audience Rating (percentage points)"
+                    help=HELP["rating_gap"],
                 )
 
                 c_col1, c_col2 = st.columns(2)
-                c_col1.caption(f"Critic count: {format_count(movie_row.get('critic_count'))}")
-                c_col2.caption(f"Audience count: {format_count(movie_row.get('audience_count'))}")
+                c_col1.metric("Critic count", format_count(movie_row.get("critic_count")), help=HELP["critic_total"])
+                c_col2.metric("Audience count", format_count(movie_row.get("audience_count")), help=HELP["audience_total"])
 
             st.divider()
 
             # --- Critic Review Sentiment ---
-            st.subheader("📝 Critic Review Text Sentiment (VADER)")
+            st.subheader("📝 Critic Review Text Sentiment (VADER)", help=HELP["sentiment"])
             st.caption(
                 "Sentiment analysis of **critic review text only**. "
                 "This is NOT audience sentiment. "
@@ -391,32 +441,33 @@ with tab_detail:
                 col_sent_chart, col_sent_stats = st.columns([2, 1])
 
                 with col_sent_chart:
-                    pct_pos = movie_row.get("pct_positive", 0) or 0
-                    pct_neu = movie_row.get("pct_neutral", 0) or 0
-                    pct_neg = movie_row.get("pct_negative", 0) or 0
-                    n_analyzed = int(movie_row.get("reviews_analyzed", 0) or 0)
+                    pct_pos = safe_number(movie_row.get("pct_positive"))
+                    pct_neu = safe_number(movie_row.get("pct_neutral"))
+                    pct_neg = safe_number(movie_row.get("pct_negative"))
+                    n_analyzed = int(safe_number(movie_row.get("reviews_analyzed")))
 
                     fig_sent = create_sentiment_chart(
                         pct_pos, pct_neu, pct_neg, n_analyzed,
                         title=f"Critic Review Sentiment — {movie_row.get('title', '')}"
                     )
-                    st.plotly_chart(fig_sent, use_container_width=True)
+                    st.plotly_chart(fig_sent, width="stretch")
 
                 with col_sent_stats:
                     avg_sent = movie_row.get("avg_sentiment")
                     st.metric(
                         "Avg. Compound Score",
                         f"{avg_sent:.3f}" if pd.notna(avg_sent) else "N/A",
+                        help=HELP["compound"],
                     )
-                    st.metric("Reviews Analyzed", f"{n_analyzed:,}")
-                    st.metric("Positive", f"{pct_pos:.1f}%")
-                    st.metric("Neutral", f"{pct_neu:.1f}%")
-                    st.metric("Negative", f"{pct_neg:.1f}%")
+                    st.metric("Reviews Analyzed", f"{n_analyzed:,}", help=HELP["reviews_analyzed"])
+                    st.metric("Positive", f"{pct_pos:.1f}%", help=HELP["sentiment_share"])
+                    st.metric("Neutral", f"{pct_neu:.1f}%", help=HELP["sentiment_share"])
+                    st.metric("Negative", f"{pct_neg:.1f}%", help=HELP["sentiment_share"])
 
                 st.divider()
 
                 # --- Review Explorer ---
-                st.subheader("📖 Review Explorer")
+                st.subheader("📖 Review Explorer", help="Browse individual critic review texts and their VADER sentiment labels.")
 
                 # Review filters
                 rev_col1, rev_col2, rev_col3 = st.columns(3)
@@ -426,11 +477,13 @@ with tab_detail:
                         options=["Positive", "Neutral", "Negative"],
                         default=["Positive", "Neutral", "Negative"],
                         key="sent_filter",
+                        help=HELP["review_filter"],
                     )
                 with rev_col2:
                     pubs = movie_reviews["publication"].dropna().unique().tolist()
                     pub_filter = st.multiselect(
-                        "Publication", options=sorted(pubs), default=[], key="pub_filter"
+                        "Publication", options=sorted(pubs), default=[], key="pub_filter",
+                        help=HELP["publication"],
                     )
                 with rev_col3:
                     rev_type_filter = st.multiselect(
@@ -438,22 +491,21 @@ with tab_detail:
                         options=["Fresh", "Rotten"],
                         default=["Fresh", "Rotten"],
                         key="rev_type_filter",
+                        help=HELP["review_type"],
                     )
 
                 # Apply review filters
                 display_reviews = movie_reviews.copy()
-                if sent_filter:
-                    display_reviews = display_reviews[
-                        display_reviews["sentiment_label"].isin(sent_filter)
-                    ]
+                display_reviews = display_reviews[
+                    display_reviews["sentiment_label"].isin(sent_filter)
+                ]
                 if pub_filter:
                     display_reviews = display_reviews[
                         display_reviews["publication"].isin(pub_filter)
                     ]
-                if rev_type_filter:
-                    display_reviews = display_reviews[
-                        display_reviews["review_type"].isin(rev_type_filter)
-                    ]
+                display_reviews = display_reviews[
+                    display_reviews["review_type"].isin(rev_type_filter)
+                ]
 
                 st.caption(f"Showing {len(display_reviews)} of {len(movie_reviews)} reviews")
 
@@ -473,11 +525,17 @@ with tab_detail:
 
                     st.dataframe(
                         review_display,
-                        use_container_width=True,
+                        width="stretch",
+                        hide_index=True,
                         height=400,
                         column_config={
-                            "Review": st.column_config.TextColumn(width="large"),
-                            "Score": st.column_config.NumberColumn(format="%.3f"),
+                            "Critic": st.column_config.TextColumn(help="Name credited for the review in the source data."),
+                            "Publication": st.column_config.TextColumn(help="Publication where the critic review appeared."),
+                            "Date": st.column_config.TextColumn(help="Review date, when available in the source data."),
+                            "Type": st.column_config.TextColumn(help="Fresh or Rotten label in the source review data."),
+                            "Score": st.column_config.NumberColumn(format="%.3f", help="VADER compound tone score for this review, from −1 to +1."),
+                            "Sentiment": st.column_config.TextColumn(help="VADER label based on the compound score: positive above 0.05, negative below −0.05, neutral between."),
+                            "Review": st.column_config.TextColumn(width="large", help="The critic review text analyzed by VADER."),
                         },
                     )
                 else:
@@ -488,13 +546,14 @@ with tab_detail:
 # TAB 3: COMPARE
 # ═══════════════════════════════════════════════════════════════
 with tab_compare:
-    st.subheader("⚖️ Movie Comparison")
+    st.subheader("Compare your shortlist", help=HELP["comparison"])
+    st.caption("Put up to five films side by side to see where ratings and critic review tone differ.")
 
     if not st.session_state.comparison_list:
         st.info(
             "No movies in your comparison list yet.\n\n"
-            "Go to the **Movie Detail** tab, search for movies, and click "
-            "**➕ Add to comparison** to build your list."
+            "Go to **Movie Detail**, choose a film, and click "
+            "**Add to comparison** to build your shortlist."
         )
     else:
         comp_df = movies_df[movies_df["movie_id"].isin(st.session_state.comparison_list)]
@@ -502,8 +561,19 @@ with tab_compare:
         if len(comp_df) == 0:
             st.warning("Selected movies not found in dataset.")
         else:
+            st.subheader("Your films", help=HELP["shortlist"])
+            with st.expander(f"Edit shortlist · {len(comp_df)}/5 films"):
+                for _, row in comp_df.iterrows():
+                    if st.button(f"Remove {row['display_label']}", key=f"remove_{row['movie_id']}",
+                                 help="Remove this film from the comparison."):
+                        st.session_state.comparison_list.remove(row["movie_id"])
+                        st.rerun()
+                if st.button("Clear shortlist", help="Remove all films from the comparison."):
+                    st.session_state.comparison_list = []
+                    st.rerun()
+
             # Comparison table
-            st.markdown("### Rating Comparison")
+            st.subheader("Rating comparison", help="Side-by-side critic and audience scores, their signed gap, and rating counts.")
             comp_table = comp_df[[
                 "display_label", "critic_rating", "audience_rating",
                 "rating_gap", "critic_count", "audience_count"
@@ -516,23 +586,24 @@ with tab_compare:
 
             st.dataframe(
                 comp_table,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
-                    "Critic %": st.column_config.NumberColumn(format="%.0f%%"),
-                    "Audience %": st.column_config.NumberColumn(format="%.0f%%"),
-                    "Gap (pp)": st.column_config.NumberColumn(format="%+.0f"),
-                    "Critic Count": st.column_config.NumberColumn(format="%,.0f"),
-                    "Audience Count": st.column_config.NumberColumn(format="%,.0f"),
+                    "Movie": st.column_config.TextColumn(help="Film title and release year."),
+                    "Critic %": st.column_config.NumberColumn(format="%.0f%%", help=HELP["critic_score"]),
+                    "Audience %": st.column_config.NumberColumn(format="%.0f%%", help=HELP["audience_score"]),
+                    "Gap (pp)": st.column_config.NumberColumn(format="%+.0f", help=HELP["rating_gap"]),
+                    "Critic Count": st.column_config.NumberColumn(format="%,.0f", help=HELP["critic_total"]),
+                    "Audience Count": st.column_config.NumberColumn(format="%,.0f", help=HELP["audience_total"]),
                 },
             )
 
             # Comparison bar chart
             fig_comp = create_comparison_bars(comp_df)
-            st.plotly_chart(fig_comp, use_container_width=True)
+            st.plotly_chart(fig_comp, width="stretch")
 
             # Sentiment comparison
-            st.markdown("### Critic Review Sentiment Comparison")
+            st.subheader("Critic review sentiment comparison", help=HELP["sentiment"])
             st.caption("VADER sentiment of critic review text only.")
 
             sent_comp = comp_df[[
@@ -546,20 +617,22 @@ with tab_compare:
 
             st.dataframe(
                 sent_comp,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
-                    "Avg. Sentiment": st.column_config.NumberColumn(format="%.3f"),
-                    "% Positive": st.column_config.NumberColumn(format="%.1f%%"),
-                    "% Neutral": st.column_config.NumberColumn(format="%.1f%%"),
-                    "% Negative": st.column_config.NumberColumn(format="%.1f%%"),
+                    "Movie": st.column_config.TextColumn(help="Film title and release year."),
+                    "Avg. Sentiment": st.column_config.NumberColumn(format="%.3f", help=HELP["compound"]),
+                    "Reviews Analyzed": st.column_config.NumberColumn(help=HELP["reviews_analyzed"]),
+                    "% Positive": st.column_config.NumberColumn(format="%.1f%%", help=HELP["sentiment_share"]),
+                    "% Neutral": st.column_config.NumberColumn(format="%.1f%%", help=HELP["sentiment_share"]),
+                    "% Negative": st.column_config.NumberColumn(format="%.1f%%", help=HELP["sentiment_share"]),
                 },
             )
 
             st.divider()
 
             # CSV Export
-            st.markdown("### 📥 Export")
+            st.subheader("Export your shortlist", help="Download one CSV row per film in this comparison, including ratings and critic text sentiment.")
             export_df = comp_df[[
                 "title", "release_year", "genres", "critic_rating", "audience_rating",
                 "rating_gap", "abs_gap", "critic_count", "audience_count",
@@ -579,7 +652,8 @@ with tab_compare:
                 data=csv_buffer.getvalue(),
                 file_name="rotten_tomatoes_comparison.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
+                help="Save the current comparison as a CSV file.",
             )
 
 
@@ -587,7 +661,7 @@ with tab_compare:
 # TAB 4: DATASET INFO
 # ═══════════════════════════════════════════════════════════════
 with tab_info:
-    st.subheader("ℹ️ About This Dataset")
+    st.subheader("What you're looking at", help=HELP["snapshot"])
 
     st.markdown("""
     ### Source
@@ -610,10 +684,10 @@ with tab_info:
     movies_with_reviews = reviews_df["movie_id"].nunique()
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Movies", f"{total_movies:,}")
-    col2.metric("With Both Ratings", f"{both_rated_total:,}")
-    col3.metric("Total Critic Reviews", f"{total_reviews:,}")
-    col4.metric("Movies with Reviews", f"{movies_with_reviews:,}")
+    col1.metric("Total Movies", f"{total_movies:,}", help="All film records in the source snapshot, before sidebar filters.")
+    col2.metric("With Both Ratings", f"{both_rated_total:,}", help="Film records with both published critic and audience percentage scores.")
+    col3.metric("Total Critic Reviews", f"{total_reviews:,}", help="Individual critic review records with text in the reviews file.")
+    col4.metric("Movies with Reviews", f"{movies_with_reviews:,}", help="Films linked to at least one individual critic review record.")
 
     st.markdown("""
     ### Important Notes
@@ -648,19 +722,19 @@ with tab_info:
     st.divider()
 
     # Sentiment vs Rating scatter
-    st.subheader("📊 Critic Text Sentiment vs. Critic Rating")
+    st.subheader("Critic text sentiment vs. critic rating", help="Compares average VADER tone of available critic review texts with the published critic percentage score.")
     st.caption(
         "Comparing VADER compound scores of critic review text against the aggregate "
-        "Tomatometer rating. Points far from the diagonal suggest the text tone differs "
-        "from the overall rating."
+        "Tomatometer rating. A film can have positive review tone and a lower "
+        "Tomatometer (or the reverse), because these measures answer different questions."
     )
     fig_svr = create_sentiment_vs_rating(movies_df)
-    st.plotly_chart(fig_svr, use_container_width=True)
+    st.plotly_chart(fig_svr, width="stretch")
 
     st.divider()
 
     # Data quality overview
-    st.subheader("📋 Data Quality Summary")
+    st.subheader("📋 Data Quality Summary", help=HELP["quality"])
 
     quality_data = {
         "Field": ["Critic Rating", "Audience Rating", "Release Year", "Genres", "Runtime"],
@@ -686,11 +760,11 @@ with tab_info:
             f"{movies_df.get('runtime_minutes', pd.Series(dtype='float64')).notna().mean()*100:.1f}%",
         ],
     }
-    st.dataframe(pd.DataFrame(quality_data), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(quality_data), hide_index=True, width="stretch")
 
     # Full filtered export
     st.divider()
-    st.subheader("📥 Export All Filtered Data")
+    st.subheader("Export filtered films", help="Download one CSV row per film matching your current sidebar filters.")
 
     export_all = filtered_df[[
         "title", "release_year", "genres", "critic_rating", "audience_rating",
@@ -708,5 +782,6 @@ with tab_info:
         data=csv_all.getvalue(),
         file_name="rotten_tomatoes_filtered.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
+        help="Save the currently filtered movie records as a CSV file.",
     )

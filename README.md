@@ -6,12 +6,13 @@ A Streamlit dashboard that explores differences between critic and audience opin
 
 ## Features
 
-- **Search & Browse**: Search all 17k+ movie titles, filter by genre, year, and rating counts
+- **Search & Browse**: Search all 17k+ movie titles, filter by genre, year, and rating counts; the same filters carry into Movie Detail
 - **Scatter Plot**: Interactive critic vs. audience rating visualization with quadrant labels
 - **Gap Ranking**: Rank movies by largest disagreement, critics higher, or audiences higher
 - **Critic Sentiment**: VADER analysis of critic review text with per-movie breakdowns
 - **Review Explorer**: Browse individual critic reviews with sentiment scores
-- **Compare Movies**: Side-by-side comparison of multiple movies
+- **Compare Movies**: Side-by-side comparison of up to five movies; manage the shortlist in the Compare tab
+- **In-app explanations**: Hover over circled info icons to understand filters, scores, charts, and sentiment measures
 - **CSV Export**: Download filtered results
 
 ## Quick Start
@@ -21,6 +22,9 @@ A Streamlit dashboard that explores differences between critic and audience opin
 ```bash
 pip install -r requirements.txt
 ```
+
+Both PyArrow and Fastparquet are included as Parquet readers. Pandas can use
+Fastparquet if a local policy blocks PyArrow's native DLLs.
 
 ### 2. Preprocess the data
 

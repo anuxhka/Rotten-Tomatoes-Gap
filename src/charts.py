@@ -12,18 +12,34 @@ import numpy as np
 
 
 # --- Color constants ---
-COLOR_CRITICS_HIGHER = "#E63946"   # Red — critics rate higher
-COLOR_AUDIENCES_HIGHER = "#457B9D" # Blue — audiences rate higher
-COLOR_NEUTRAL = "#A8DADC"          # Light teal — agreement
-COLOR_POSITIVE = "#2A9D8F"         # Green for positive sentiment
-COLOR_NEGATIVE = "#E76F51"         # Orange-red for negative
-COLOR_NEUTRAL_SENT = "#E9C46A"     # Yellow for neutral sentiment
+COLOR_CRITICS_HIGHER = "#cf3d32"
+COLOR_AUDIENCES_HIGHER = "#326b83"
+COLOR_NEUTRAL = "#d7d4cc"
+COLOR_POSITIVE = "#4d8d77"
+COLOR_NEGATIVE = "#cf5b4d"
+COLOR_NEUTRAL_SENT = "#d7ae56"
 
 DIVERGING_COLORSCALE = [
-    [0.0, "#457B9D"],   # Audiences higher (negative gap)
-    [0.5, "#F1FAEE"],   # Agreement (zero gap)
-    [1.0, "#E63946"],   # Critics higher (positive gap)
+    [0.0, "#326b83"],
+    [0.5, "#d7d4cc"],
+    [1.0, "#cf3d32"],
 ]
+
+
+def _finish_chart(fig: go.Figure) -> go.Figure:
+    """Apply one quiet visual language to every chart."""
+    fig.update_layout(
+        title=None,
+        paper_bgcolor="#fffefa",
+        plot_bgcolor="#fffefa",
+        font=dict(family="Segoe UI, Arial, sans-serif", color="#4e5b63", size=12),
+        margin=dict(l=54, r=30, t=32, b=54),
+        hoverlabel=dict(bgcolor="#1b272e", font_color="#ffffff"),
+        legend=dict(font=dict(size=11)),
+    )
+    fig.update_xaxes(gridcolor="#e9e6df", zeroline=False, linecolor="#d9d6ce")
+    fig.update_yaxes(gridcolor="#e9e6df", zeroline=False, linecolor="#d9d6ce")
+    return fig
 
 
 def create_scatter_plot(
@@ -58,32 +74,28 @@ def create_scatter_plot(
         fig.add_annotation(text="No movies with both ratings in current filter",
                           xref="paper", yref="paper", x=0.5, y=0.5,
                           showarrow=False, font=dict(size=16))
-        return fig
-
-    # Normalize gap for color mapping: map [-100, 100] → [0, 1]
-    plot_df["gap_normalized"] = (plot_df["rating_gap"] + 100) / 200
+        return _finish_chart(fig)
 
     fig = go.Figure()
 
     # Main scatter points
-    fig.add_trace(go.Scatter(
+    fig.add_trace(go.Scattergl(
         x=plot_df["audience_rating"],
         y=plot_df["critic_rating"],
         mode="markers",
         marker=dict(
-            size=6,
+            size=5,
             color=plot_df["rating_gap"],
             colorscale=DIVERGING_COLORSCALE,
-            cmin=-100,
-            cmax=100,
+            cmin=-70,
+            cmax=70,
             colorbar=dict(
-                title="Rating Gap<br>(C − A)",
-                tickvals=[-100, -50, 0, 50, 100],
-                ticktext=["-100<br>Audiences<br>higher", "-50", "0<br>Equal", "+50", "+100<br>Critics<br>higher"],
-                len=0.8,
+                title="Gap (pp)",
+                tickvals=[-70, -35, 0, 35, 70],
+                len=0.72,
+                thickness=12,
             ),
-            opacity=0.6,
-            line=dict(width=0.5, color="white"),
+            opacity=0.48,
         ),
         text=plot_df["display_label"],
         customdata=np.column_stack([
@@ -115,9 +127,9 @@ def create_scatter_plot(
                 mode="markers+text",
                 marker=dict(
                     size=14,
-                    color=COLOR_CRITICS_HIGHER,
+                    color="#e6a248",
                     symbol="star",
-                    line=dict(width=2, color="black"),
+                    line=dict(width=1.5, color="#18232b"),
                 ),
                 text=sel_df["display_label"],
                 textposition="top center",
@@ -130,7 +142,7 @@ def create_scatter_plot(
     fig.add_trace(go.Scatter(
         x=[0, 100], y=[0, 100],
         mode="lines",
-        line=dict(color="gray", dash="dash", width=1.5),
+        line=dict(color="#263741", dash="dash", width=1.5),
         showlegend=False,
         hoverinfo="skip",
     ))
@@ -138,23 +150,23 @@ def create_scatter_plot(
     # Optional quadrant lines at 60%
     if show_quadrants:
         for val in [60]:
-            fig.add_hline(y=val, line_dash="dot", line_color="lightgray",
+            fig.add_hline(y=val, line_dash="dot", line_color="#bfc2bb",
                          line_width=1, opacity=0.7)
-            fig.add_vline(x=val, line_dash="dot", line_color="lightgray",
+            fig.add_vline(x=val, line_dash="dot", line_color="#bfc2bb",
                          line_width=1, opacity=0.7)
 
         # Quadrant labels
         annotations = [
-            dict(x=30, y=80, text="Critics Prefer", font=dict(color="rgba(230,57,70,0.5)", size=12)),
-            dict(x=80, y=30, text="Crowd Pleasers", font=dict(color="rgba(69,123,157,0.5)", size=12)),
-            dict(x=80, y=80, text="Both Positive", font=dict(color="rgba(42,157,143,0.5)", size=12)),
-            dict(x=30, y=30, text="Both Negative", font=dict(color="rgba(150,150,150,0.5)", size=12)),
+            dict(x=28, y=82, text="Critics prefer", font=dict(color="#a6443b", size=12)),
+            dict(x=80, y=30, text="Audience favourites", font=dict(color="#326b83", size=12)),
+            dict(x=80, y=82, text="Both positive", font=dict(color="#537c69", size=12)),
+            dict(x=28, y=28, text="Both negative", font=dict(color="#6d777a", size=12)),
         ]
         for ann in annotations:
             fig.add_annotation(
                 x=ann["x"], y=ann["y"], text=ann["text"],
                 showarrow=False, font=ann["font"],
-                opacity=0.7,
+                bgcolor="rgba(255,254,250,0.84)", borderpad=4,
             )
 
     fig.update_layout(
@@ -167,7 +179,7 @@ def create_scatter_plot(
         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
     )
 
-    return fig
+    return _finish_chart(fig)
 
 
 def create_gap_ranking(
@@ -199,19 +211,15 @@ def create_gap_ranking(
 
     if mode == "largest":
         plot_df = plot_df.nlargest(top_n, "abs_gap")
-        sort_col = "abs_gap"
         title = f"Top {top_n} Largest Rating Disagreements"
     elif mode == "critics_higher":
         plot_df = plot_df[plot_df["rating_gap"] > 0].nlargest(top_n, "rating_gap")
-        sort_col = "rating_gap"
         title = f"Top {top_n} Movies Where Critics Rate Higher"
     elif mode == "audiences_higher":
         plot_df = plot_df[plot_df["rating_gap"] < 0].nsmallest(top_n, "rating_gap")
-        sort_col = "rating_gap"
         title = f"Top {top_n} Movies Where Audiences Rate Higher"
     else:
         plot_df = plot_df.nlargest(top_n, "abs_gap")
-        sort_col = "abs_gap"
         title = f"Top {top_n} Largest Rating Disagreements"
 
     if len(plot_df) == 0:
@@ -219,7 +227,7 @@ def create_gap_ranking(
         fig.add_annotation(text="No movies match this filter",
                           xref="paper", yref="paper", x=0.5, y=0.5,
                           showarrow=False)
-        return fig
+        return _finish_chart(fig)
 
     plot_df = plot_df.sort_values("rating_gap", ascending=True)
 
@@ -243,18 +251,18 @@ def create_gap_ranking(
         ),
     ))
 
-    fig.add_vline(x=0, line_color="gray", line_width=1)
+    fig.add_vline(x=0, line_color="#89939a", line_width=1)
 
     fig.update_layout(
         title=title,
         xaxis=dict(title="Rating Gap (Critic − Audience, pp)", range=[-105, 105]),
         yaxis=dict(title=""),
-        height=max(height, top_n * 28),
+        height=max(height, len(plot_df) * 31 + 80),
         template="plotly_white",
         showlegend=False,
     )
 
-    return fig
+    return _finish_chart(fig)
 
 
 def create_sentiment_chart(
@@ -307,7 +315,7 @@ def create_sentiment_chart(
         legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
     )
 
-    return fig
+    return _finish_chart(fig)
 
 
 def create_sentiment_vs_rating(
@@ -334,7 +342,7 @@ def create_sentiment_vs_rating(
         fig = go.Figure()
         fig.add_annotation(text="No data available", xref="paper", yref="paper",
                           x=0.5, y=0.5, showarrow=False)
-        return fig
+        return _finish_chart(fig)
 
     fig = px.scatter(
         plot_df,
@@ -358,7 +366,7 @@ def create_sentiment_vs_rating(
         template="plotly_white",
     )
 
-    return fig
+    return _finish_chart(fig)
 
 
 def create_comparison_bars(
@@ -384,7 +392,7 @@ def create_comparison_bars(
         fig.add_annotation(text="No movies selected for comparison",
                           xref="paper", yref="paper", x=0.5, y=0.5,
                           showarrow=False)
-        return fig
+        return _finish_chart(fig)
 
     fig = go.Figure()
 
@@ -414,7 +422,7 @@ def create_comparison_bars(
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
 
-    return fig
+    return _finish_chart(fig)
 
 
 def create_gap_distribution(
@@ -441,16 +449,16 @@ def create_gap_distribution(
         plot_df,
         x="rating_gap",
         nbins=50,
-        color_discrete_sequence=["#264653"],
+        color_discrete_sequence=["#326b83"],
         labels={"rating_gap": "Rating Gap (Critic − Audience, pp)"},
     )
 
-    fig.add_vline(x=0, line_color="red", line_dash="dash", line_width=2,
+    fig.add_vline(x=0, line_color="#cf3d32", line_dash="dash", line_width=2,
                   annotation_text="Equal", annotation_position="top")
 
-    mean_gap = plot_df["rating_gap"].mean()
-    fig.add_vline(x=mean_gap, line_color="orange", line_dash="dot", line_width=2,
-                  annotation_text=f"Mean: {mean_gap:+.1f}", annotation_position="bottom")
+    if not plot_df.empty:
+        mean_gap = plot_df["rating_gap"].mean()
+        fig.add_vline(x=mean_gap, line_color="#d7ae56", line_dash="dot", line_width=2)
 
     fig.update_layout(
         title="Distribution of Rating Gaps",
@@ -460,4 +468,4 @@ def create_gap_distribution(
         showlegend=False,
     )
 
-    return fig
+    return _finish_chart(fig)

@@ -96,19 +96,18 @@ def load_movie_sentiment_summary(data_dir: str | Path | None = None) -> pd.DataF
         reviews_analyzed=("compound", "count"),
     ).reset_index()
 
-    # Calculate percentages
-    def calc_pcts(group):
-        total = len(group)
-        if total == 0:
-            return pd.Series({"pct_positive": 0.0, "pct_neutral": 0.0, "pct_negative": 0.0})
-        counts = group["sentiment_label"].value_counts()
-        return pd.Series({
-            "pct_positive": counts.get("Positive", 0) / total * 100,
-            "pct_neutral": counts.get("Neutral", 0) / total * 100,
-            "pct_negative": counts.get("Negative", 0) / total * 100,
-        })
-
-    pcts = grouped.apply(calc_pcts, include_groups=False).reset_index()
+    # Aggregate all sentiment labels at once instead of calling Python once per movie.
+    counts = reviews.groupby(["movie_id", "sentiment_label"]).size().unstack(fill_value=0)
+    counts = counts.reindex(columns=["Positive", "Neutral", "Negative"], fill_value=0)
+    totals = grouped.size()
+    pcts = pd.DataFrame(index=counts.index)
+    for label, column in [
+        ("Positive", "pct_positive"),
+        ("Neutral", "pct_neutral"),
+        ("Negative", "pct_negative"),
+    ]:
+        pcts[column] = counts.get(label, 0).div(totals).mul(100)
+    pcts = pcts.reset_index()
     agg = agg.merge(pcts, on="movie_id", how="left")
 
     return agg
