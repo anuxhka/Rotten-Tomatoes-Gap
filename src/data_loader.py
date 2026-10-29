@@ -9,6 +9,7 @@ across reruns.
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+from src.filters import genre_values
 
 
 # Default paths relative to the project root
@@ -134,8 +135,7 @@ def get_all_genres(movies_df: pd.DataFrame) -> list[str]:
     """Extract all unique genres from the dataset, sorted."""
     all_genres = set()
     for genre_list in movies_df["genres_list"]:
-        if isinstance(genre_list, list):
-            all_genres.update(genre_list)
+        all_genres.update(genre_values(genre_list))
     return sorted(g for g in all_genres if g)
 
 

@@ -42,6 +42,15 @@ REVIEWS_COLUMN_MAP = {
     "review_score": "review_score",
 }
 
+MOVIES_REQUIRED_COLUMNS = {
+    "movie_id", "title", "genres", "critic_rating", "audience_rating",
+    "critic_count", "audience_count",
+}
+REVIEWS_REQUIRED_COLUMNS = {
+    "movie_id", "critic_name", "publication", "review_date",
+    "review_type", "review_text",
+}
+
 
 def clean_movies(raw_movies_path: str | Path) -> pd.DataFrame:
     """
@@ -68,10 +77,27 @@ def clean_movies(raw_movies_path: str | Path) -> pd.DataFrame:
     print(f"  Loading movies from {raw_movies_path}...")
     df = pd.read_csv(raw_movies_path)
     print(f"  Raw movies loaded: {len(df)} records, {len(df.columns)} columns")
+    if df.empty:
+        raise ValueError("Movies CSV contains no rows")
 
     # Rename columns that exist in the file
     rename_map = {k: v for k, v in MOVIES_COLUMN_MAP.items() if k in df.columns}
     df = df.rename(columns=rename_map)
+
+    missing_required = MOVIES_REQUIRED_COLUMNS - set(df.columns)
+    if missing_required:
+        raise ValueError(f"Movies CSV is missing required columns: {', '.join(sorted(missing_required))}")
+
+    movie_ids = df["movie_id"].astype(str).str.strip()
+    if (df["movie_id"].isna() | movie_ids.eq("")).any():
+        raise ValueError("Movies CSV contains missing movie IDs")
+    titles = df["title"].astype(str).str.strip()
+    if (df["title"].isna() | titles.eq("")).any():
+        raise ValueError("Movies CSV contains missing titles")
+    if movie_ids.duplicated().any():
+        raise ValueError("Movies CSV contains duplicate movie IDs")
+    df["movie_id"] = movie_ids
+    df["title"] = titles
 
     # Report any expected columns that are missing
     expected_internal = set(MOVIES_COLUMN_MAP.values())
@@ -90,6 +116,10 @@ def clean_movies(raw_movies_path: str | Path) -> pd.DataFrame:
                 "fresh_critics_count", "rotten_critics_count"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+            invalid_count = (df[col] < 0).sum()
+            if invalid_count:
+                print(f"  Warning: {invalid_count} negative value(s) in {col}, setting to NaN")
+                df.loc[df[col] < 0, col] = np.nan
 
     # Validate rating percentages: must be in [0, 100], else NaN
     for col in ["critic_rating", "audience_rating"]:
@@ -102,7 +132,7 @@ def clean_movies(raw_movies_path: str | Path) -> pd.DataFrame:
 
     # Parse release date and derive year
     if "release_date" in df.columns:
-        df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
+        df["release_date"] = pd.to_datetime(df["release_date"], format="mixed", errors="coerce")
         df["release_year"] = df["release_date"].dt.year.astype("Int64")
     else:
         df["release_year"] = pd.NA
@@ -183,9 +213,17 @@ def clean_reviews(raw_reviews_path: str | Path) -> pd.DataFrame:
     rename_map = {k: v for k, v in REVIEWS_COLUMN_MAP.items() if k in df.columns}
     df = df.rename(columns=rename_map)
 
-    # Ensure movie_id is string
-    if "movie_id" in df.columns:
-        df["movie_id"] = df["movie_id"].astype(str)
+    missing_required = REVIEWS_REQUIRED_COLUMNS - set(df.columns)
+    if missing_required:
+        raise ValueError(f"Reviews CSV is missing required columns: {', '.join(sorted(missing_required))}")
+
+    # A review without a movie key cannot appear in the dashboard or join summary.
+    valid_movie_ids = df["movie_id"].notna() & df["movie_id"].astype(str).str.strip().ne("")
+    removed_unlinked = len(df) - int(valid_movie_ids.sum())
+    if removed_unlinked:
+        print(f"  Removed {removed_unlinked} reviews with missing movie IDs")
+    df = df.loc[valid_movie_ids].copy()
+    df["movie_id"] = df["movie_id"].astype(str).str.strip()
 
     # Remove records with empty/null review text
     before = len(df)
@@ -206,7 +244,7 @@ def clean_reviews(raw_reviews_path: str | Path) -> pd.DataFrame:
 
     # Parse review date
     if "review_date" in df.columns:
-        df["review_date"] = pd.to_datetime(df["review_date"], errors="coerce")
+        df["review_date"] = pd.to_datetime(df["review_date"], format="mixed", errors="coerce")
 
     print(f"  Reviews cleaned: {len(df)} records")
 

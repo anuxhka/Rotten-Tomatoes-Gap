@@ -60,12 +60,19 @@ def score_reviews(reviews_df: pd.DataFrame, text_column: str = "review_text") ->
     pd.DataFrame
         Input DataFrame with added columns: compound, pos, neu, neg, sentiment_label.
     """
-    analyzer = SentimentIntensityAnalyzer()
     df = reviews_df.copy()
 
     print(f"  Scoring {len(df)} reviews with VADER...")
 
+    if df.empty:
+        for column in ["compound", "vader_pos", "vader_neu", "vader_neg"]:
+            df[column] = pd.Series(dtype="float64")
+        df["sentiment_label"] = pd.Series(dtype="str")
+        print("  No reviews to score")
+        return df
+
     # Score each review — preserve original text
+    analyzer = SentimentIntensityAnalyzer()
     scores = df[text_column].apply(lambda text: analyzer.polarity_scores(str(text)))
 
     df["compound"] = scores.apply(lambda x: x["compound"])
@@ -100,6 +107,19 @@ def aggregate_movie_sentiment(scored_reviews_df: pd.DataFrame) -> pd.DataFrame:
         One row per movie with sentiment summary columns.
     """
     print("  Aggregating movie-level sentiment...")
+
+    if scored_reviews_df.empty:
+        return pd.DataFrame({
+            "movie_id": pd.Series(dtype="str"),
+            "avg_sentiment": pd.Series(dtype="float64"),
+            "median_sentiment": pd.Series(dtype="float64"),
+            "std_sentiment": pd.Series(dtype="float64"),
+            "reviews_analyzed": pd.Series(dtype="int64"),
+            "pct_positive": pd.Series(dtype="float64"),
+            "pct_neutral": pd.Series(dtype="float64"),
+            "pct_negative": pd.Series(dtype="float64"),
+            "movie_sentiment_label": pd.Series(dtype="str"),
+        })
 
     grouped = scored_reviews_df.groupby("movie_id")
 

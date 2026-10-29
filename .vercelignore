@@ -1,0 +1,9 @@
+.git
+.localdeps
+.streamlit/secrets.toml
+data/raw
+**/__pycache__
+*.pyc
+README.md
+preprocess.py
+requirements-preprocess.txt
