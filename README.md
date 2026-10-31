@@ -2,133 +2,138 @@
 
 **Quantifying the Critic vs. Audience Disconnect**
 
-A Streamlit dashboard that explores differences between critic and audience opinions using [Stefano Leone's Rotten Tomatoes Movies and Critic Reviews dataset](https://www.kaggle.com/datasets/stefanoleone992/rotten-tomatoes-movies-and-critic-reviews-dataset) from Kaggle (CC0: Public Domain).
+An interactive Streamlit dashboard that measures how often, how much and in which direction film critics and audiences disagree. It covers 17,712 films and about 952,000 critic reviews from [Stefano Leone's Rotten Tomatoes Movies and Critic Reviews dataset](https://www.kaggle.com/datasets/stefanoleone992/rotten-tomatoes-movies-and-critic-reviews-dataset) (Kaggle, CC0: Public Domain).
 
-**Data disclosure:** This is an independent analysis of a third-party dataset scraped on October 31, 2020. It does not use live Rotten Tomatoes website data and is not affiliated with Rotten Tomatoes. The same notice appears in the dashboard sidebar.
+> **Data disclosure:** This is an independent analysis of a third-party dataset scraped on 31 October 2020. It does not use live Rotten Tomatoes data and is not affiliated with Rotten Tomatoes.
 
 ## Features
 
-- **Search & Browse**: Search all 17k+ movie titles with match-case and exact-word options; filter by genre, year, and rating counts. The same filters carry into Movie Detail.
-- **Scatter Plot**: Interactive critic vs. audience rating visualization with quadrant labels and responsive score-pair hover
-- **Gap Ranking**: Rank movies by largest disagreement, critics higher, or audiences higher
-- **Critic Sentiment**: VADER analysis of critic review text with per-movie breakdowns
-- **Review Explorer**: Browse individual critic reviews with sentiment scores
-- **Compare Movies**: Side-by-side comparison of up to five movies; manage the shortlist in the Compare tab
-- **In-app explanations**: Hover over circled info icons to understand filters, scores, charts, and sentiment measures
-- **CSV Export**: Download filtered results
+- **Search and filters**: search all titles (with match-case and exact-word options) and filter by genre, release year and rating counts. Filters apply across every tab.
+- **Opinion map**: an interactive scatter plot of critic vs. audience scores with quadrant labels.
+- **Disagreement leaderboard**: rank films by largest disagreement, critics rating higher or audiences rating higher.
+- **Gap distribution**: a histogram of rating gaps across the filtered films.
+- **Critic sentiment**: VADER sentiment analysis of critic review text, with a per-film breakdown.
+- **Review explorer**: browse individual critic reviews filtered by sentiment, publication and Fresh/Rotten verdict.
+- **Compare**: compare up to five films side by side.
+- **CSV export**: download the filtered films or the comparison shortlist.
 
-## Quick Start
+## Tech Stack
 
-### 1. Install dependencies
+Python · pandas · Streamlit · Plotly · VADER (vaderSentiment) · Parquet (PyArrow / fastparquet)
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12 or newer
+
+### Installation
 
 ```bash
+git clone https://github.com/anuxhka/Rotten-Tomatoes-Gap.git
+cd Rotten-Tomatoes-Gap
 pip install -r requirements.txt
 ```
 
-Both PyArrow and Fastparquet are included as Parquet readers. Pandas can use
-Fastparquet if a local policy blocks PyArrow's native DLLs.
+### Running the dashboard
 
-### 2. Preprocess the data
+```bash
+python -m streamlit run app.py
+```
 
-Install the optional preprocessing dependencies before rebuilding the snapshot:
+The dashboard opens at `http://localhost:8501`. The processed data is included in `data/processed/`, so no download is needed to run it.
+
+## Rebuilding the Data
+
+The processed Parquet files can be regenerated from the raw dataset:
 
 ```bash
 pip install -r requirements-preprocess.txt
-```
-
-The preprocessing script can then download the dataset via KaggleHub:
-
-```bash
 python preprocess.py
 ```
 
-If KaggleHub fails, download the dataset manually from [Kaggle](https://www.kaggle.com/datasets/stefanoleone992/rotten-tomatoes-movies-and-critic-reviews-dataset) and extract the CSVs into `data/raw/`.
+The script downloads the dataset with KaggleHub. Alternatively, download it manually from [Kaggle](https://www.kaggle.com/datasets/stefanoleone992/rotten-tomatoes-movies-and-critic-reviews-dataset) and extract the CSV files into `data/raw/`.
 
-### 3. Launch the dashboard
+Preprocessing cleans and validates the ratings, computes the rating gap for each film, removes empty and duplicate reviews, and scores every review with VADER.
 
-```bash
-streamlit run app.py
-```
-
-### 4. Run the tests
+## Testing
 
 ```bash
 python -B -m unittest discover -s tests -v
 ```
 
-## Vercel live demo (you deploy)
+The suite covers data cleaning, sentiment scoring, filters, charts, the integrity of the bundled data, and headless end-to-end runs of the dashboard using Streamlit's `AppTest`.
 
-The repository includes an ASGI entry point in `api/index.py`, a catch-all
-route in `vercel.json`, and a Python 3.12 version file. The processed Parquet
-snapshot is bundled, so deployment does not download from Kaggle or need an
-API key. The app and data disclosure can be checked locally with:
+## Deployment
 
-```bash
-python -m uvicorn api.index:app --port 8502
-```
-
-Open `http://localhost:8502/` and check Overview, Movie Detail, and Compare.
-When you are ready, use the [Vercel CLI](https://vercel.com/docs/cli/deploying-from-cli)
-from this folder to create a **preview deployment first**, then a production
-deployment after testing. The CLI will ask you to sign in to your own Vercel
-account; no account credentials or tokens belong in this project:
+The project includes an ASGI entry point (`api/index.py`) and a `vercel.json` configuration for deployment on [Vercel](https://vercel.com/docs/cli/deploying-from-cli):
 
 ```bash
-npm install -g vercel
-vercel login
-vercel deploy
-# After checking the preview URL:
-vercel deploy --prod
+vercel deploy          # preview deployment
+vercel deploy --prod   # production deployment
 ```
 
-This Vercel configuration is **locally tested via ASGI, but not verified on
-Vercel**. Streamlit's ASGI support and Vercel's Python WebSocket support are
-recent. On the Hobby plan, WebSocket connections are limited by the Function's
-maximum duration and may reconnect after about five minutes; in-memory
-session selections can reset. The processed snapshot is about 102 MB, so
-check the preview build's Function bundle size and memory use before going live.
+The ASGI app can be run locally with `python -m uvicorn api.index:app --port 8502`.
+
+Note that the bundled data is about 100 MB, and Vercel limits how long a WebSocket session can stay open, so long dashboard sessions may reconnect and reset the comparison shortlist.
 
 ## Project Structure
 
 ```
-├── app.py                  # Streamlit dashboard
-├── api/index.py            # ASGI entry point for Vercel
-├── preprocess.py           # One-time data preprocessing CLI
-├── requirements.txt        # Python dependencies
-├── requirements-preprocess.txt # Optional data preparation dependencies
-├── vercel.json             # Vercel route and Function configuration
-├── .streamlit/
-│   └── config.toml         # Dashboard theme config
+├── app.py                       # Streamlit dashboard
+├── preprocess.py                # Data preprocessing pipeline
+├── api/
+│   └── index.py                 # ASGI entry point for Vercel
 ├── src/
-│   ├── __init__.py
-│   ├── preprocessing.py    # Data cleaning & validation
-│   ├── sentiment.py        # VADER sentiment scoring
-│   ├── data_loader.py      # Cached data loading
-│   └── charts.py           # Plotly chart builders
+│   ├── preprocessing.py         # Data cleaning and validation
+│   ├── sentiment.py             # VADER sentiment scoring
+│   ├── data_loader.py           # Cached data loading
+│   ├── filters.py               # Title search
+│   └── charts.py                # Plotly chart builders
 ├── data/
-│   ├── raw/                # Place downloaded CSVs here (if not using KaggleHub)
-│   └── processed/          # Generated Parquet files
-└── README.md
+│   ├── raw/                     # Raw CSV files (optional, for preprocessing)
+│   └── processed/               # Processed Parquet files
+├── tests/                       # Unit and end-to-end tests
+├── assets/styles.css            # Dashboard styling
+├── .streamlit/config.toml       # Streamlit theme
+├── report/                      # Mini project report
+├── requirements.txt             # Dashboard dependencies
+├── requirements-preprocess.txt  # Preprocessing dependencies
+└── vercel.json                  # Vercel configuration
 ```
 
 ## Dataset
 
-- **Source**: Stefano Leone / Kaggle
-- **License**: CC0: Public Domain
-- **Snapshot date**: October 31, 2020
-- **Coverage**: ~17,000+ movies with critic and audience ratings
-- **Reviews**: Individual critic review text (no audience text reviews)
+| | |
+|:--|:--|
+| Source | Stefano Leone, Kaggle |
+| License | CC0: Public Domain |
+| Snapshot date | 31 October 2020 |
+| Films | 17,712 (17,407 with both critic and audience scores) |
+| Critic reviews | ~952,000 with review text |
+| Audience data | Aggregate scores only (no review text) |
 
 ## Key Metrics
 
 | Metric | Formula | Meaning |
 |:--|:--|:--|
-| Rating Gap | Critic % − Audience % | Direction of disagreement |
-| Disagreement Size | \|Critic % − Audience %\| | Magnitude of disagreement |
+| Rating gap | Critic % − Audience % | Who liked the film more: positive means critics, negative means audiences |
+| Absolute gap | \|Critic % − Audience %\| | How much they disagree, regardless of direction |
+| Review sentiment | VADER compound score (−1 to +1) | Tone of the critic review text: Positive ≥ 0.05, Negative ≤ −0.05, otherwise Neutral |
 
 ## Limitations
 
-- Historical snapshot, not live scores
-- VADER may misinterpret sarcasm
-- No audience review text available
-- Rating percentages reflect different reviewer populations
+- The data is a historical snapshot, not live scores.
+- VADER can misread sarcasm and mixed opinions.
+- No audience review text is available, so sentiment covers critics only.
+- Critic and audience scores come from different groups and are measured differently.
+
+## Authors
+
+- Anushka Sinha (245816322)
+- Aahna Negi (245816190)
+
+## Acknowledgements
+
+- Stefano Leone for the [Rotten Tomatoes Movies and Critic Reviews dataset](https://www.kaggle.com/datasets/stefanoleone992/rotten-tomatoes-movies-and-critic-reviews-dataset)
+- C. J. Hutto and E. Gilbert for [VADER](https://github.com/cjhutto/vaderSentiment)
